@@ -1,6 +1,8 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
@@ -14,6 +16,8 @@ import com.example.model.Project
 import com.example.model.TimelineClip
 import com.example.model.TrackType
 import com.example.model.VoiceProfile
+import com.example.util.FileImportExportHelper
+import com.example.util.FileMetadata
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +26,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.util.UUID
 
 enum class StudioScreen(val label: String) {
@@ -313,6 +319,162 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 addClipToTrack(TrackType.VIDEO, videoTitle, durationSec)
                 _currentScreen.value = StudioScreen.EDITOR
+            }
+        }
+    }
+
+    // --- FILE IMPORT / EXPORT CAPABILITIES ---
+    private val _fileOperationStatus = MutableStateFlow<String?>(null)
+    val fileOperationStatus: StateFlow<String?> = _fileOperationStatus.asStateFlow()
+
+    fun clearFileStatus() {
+        _fileOperationStatus.value = null
+    }
+
+    fun setFileStatus(msg: String) {
+        _fileOperationStatus.value = msg
+    }
+
+    fun importMediaFiles(context: Context, uris: List<Uri>, asNewProject: Boolean = false) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            val metadataList = uris.map { FileImportExportHelper.queryUriMetadata(context, it) }
+            val firstMeta = metadataList.first()
+
+            if (asNewProject || _activeProject.value == null) {
+                val projTitle = if (metadataList.size == 1) {
+                    firstMeta.name.substringBeforeLast(".")
+                } else {
+                    "Dự án nhập ${metadataList.size} tệp"
+                }
+                createNewProject("9:16", projTitle)
+            }
+
+            val currentClips = _timelineClips.value.toMutableList()
+            var currentStartTime = _playheadSec.value
+
+            metadataList.forEach { meta ->
+                val isImage = meta.mimeType.startsWith("image/")
+                val duration = if (isImage) 5.0f else 8.0f
+                val trackType = TrackType.VIDEO
+                val color = if (isImage) 0xFF3B82F6 else 0xFF2563EB
+
+                val clip = TimelineClip(
+                    id = UUID.randomUUID().toString(),
+                    trackType = trackType,
+                    title = meta.name,
+                    startTimeSec = currentStartTime,
+                    durationSec = duration,
+                    colorHex = color
+                )
+                currentClips.add(clip)
+                currentStartTime += duration
+            }
+
+            _timelineClips.value = currentClips
+            _currentScreen.value = StudioScreen.EDITOR
+            _fileOperationStatus.value = "Đã nhập thành công ${metadataList.size} tệp phương tiện vào dự án!"
+            triggerCloudSync()
+        }
+    }
+
+    fun importAudioFile(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val meta = FileImportExportHelper.queryUriMetadata(context, uri)
+            val currentClips = _timelineClips.value.toMutableList()
+            val start = _playheadSec.value
+            val clip = TimelineClip(
+                id = UUID.randomUUID().toString(),
+                trackType = TrackType.AUDIO,
+                title = meta.name,
+                startTimeSec = start,
+                durationSec = 15.0f,
+                volume = 0.9f,
+                colorHex = 0xFF059669
+            )
+            currentClips.add(clip)
+            _timelineClips.value = currentClips
+            _fileOperationStatus.value = "Đã nhập âm thanh: ${meta.name}"
+            triggerCloudSync()
+        }
+    }
+
+    fun importSubtitleFile(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val subClips = FileImportExportHelper.parseSubtitleFromUri(context, uri)
+            if (subClips.isNotEmpty()) {
+                val currentClips = _timelineClips.value.toMutableList()
+                currentClips.addAll(subClips)
+                _timelineClips.value = currentClips
+                _fileOperationStatus.value = "Đã nhập ${subClips.size} đoạn phụ đề Vietsub vào dòng thời gian!"
+                triggerCloudSync()
+            } else {
+                _fileOperationStatus.value = "Không tìm thấy dữ liệu phụ đề hợp lệ trong tệp."
+            }
+        }
+    }
+
+    fun importProjectBackup(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val jsonString = context.contentResolver.openInputStream(uri)?.use { stream ->
+                    BufferedReader(InputStreamReader(stream)).readText()
+                } ?: ""
+                if (jsonString.isNotBlank()) {
+                    val imported = FileImportExportHelper.importProjectFromJson(jsonString)
+                    val newProj = Project(
+                        title = imported.title,
+                        aspectRatio = imported.aspectRatio,
+                        durationSeconds = imported.durationSeconds,
+                        resolution = imported.resolution,
+                        fps = imported.fps,
+                        lastEdited = "Vừa khôi phục"
+                    )
+                    val id = repository.insertProject(newProj)
+                    _activeProject.value = newProj.copy(id = id)
+                    _timelineClips.value = imported.clips
+                    _keyframes.value = imported.keyframes
+                    _activeFilter.value = imported.activeFilter
+                    _activeAspectRatio.value = imported.aspectRatio
+                    _currentScreen.value = StudioScreen.EDITOR
+                    _fileOperationStatus.value = "Đã khôi phục thành công dự án: ${imported.title}"
+                    triggerCloudSync()
+                }
+            } catch (e: Exception) {
+                _fileOperationStatus.value = "Lỗi khi đọc tệp dự án: ${e.message}"
+            }
+        }
+    }
+
+    fun exportProjectBackupJson(): String {
+        val proj = _activeProject.value ?: Project(title = "Hendy Vietsub")
+        return FileImportExportHelper.exportProjectToJson(
+            project = proj,
+            clips = _timelineClips.value,
+            keyframes = _keyframes.value,
+            filter = _activeFilter.value
+        )
+    }
+
+    fun exportSubtitles(format: String): String {
+        return if (format.equals("VTT", ignoreCase = true)) {
+            FileImportExportHelper.generateVttContent(_timelineClips.value)
+        } else {
+            FileImportExportHelper.generateSrtContent(_timelineClips.value)
+        }
+    }
+
+    fun saveExportedFileToUri(context: Context, uri: Uri, content: String, isMedia: Boolean = false) {
+        viewModelScope.launch {
+            val success = if (isMedia) {
+                FileImportExportHelper.writeSampleMediaToUri(context, uri, _activeProject.value?.title ?: "Hendy Vietsub")
+            } else {
+                FileImportExportHelper.writeTextToUri(context, uri, content)
+            }
+            if (success) {
+                _fileOperationStatus.value = "Đã lưu tệp thành công vào thiết bị!"
+            } else {
+                _fileOperationStatus.value = "Lỗi khi ghi tệp vào thiết bị."
             }
         }
     }

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CallSplit
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
@@ -88,6 +90,7 @@ import com.example.model.Keyframe
 import com.example.model.TimelineClip
 import com.example.model.TrackType
 import com.example.ui.components.ExportDialog
+import com.example.ui.components.MediaImportDialog
 import com.example.ui.components.ParameterSlider
 import com.example.ui.theme.AmberGlow
 import com.example.ui.theme.HyperViolet
@@ -125,8 +128,10 @@ fun MultiTrackEditorScreen(
     val isCloudSynced by viewModel.isCloudSynced.collectAsState()
 
     var showExportDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
     var showKeyframePanel by remember { mutableStateOf(false) }
     var showFilterPicker by remember { mutableStateOf(false) }
+    val fileStatus by viewModel.fileOperationStatus.collectAsState()
 
     // Keyframe slider values
     var kfScale by remember { mutableFloatStateOf(1.0f) }
@@ -224,7 +229,41 @@ fun MultiTrackEditorScreen(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Export 4K", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Xuất 4K", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // File Operation Feedback Banner
+        if (fileStatus != null) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = HyperViolet.copy(alpha = 0.25f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = fileStatus ?: "",
+                        color = NeonCyan,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = { viewModel.clearFileStatus() },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Đóng", tint = StudioWhite, modifier = Modifier.size(14.dp))
+                    }
+                }
             }
         }
 
@@ -432,12 +471,30 @@ fun MultiTrackEditorScreen(
             ) {
                 Icon(Icons.Default.Videocam, contentDescription = "Record", tint = NeonCyan, modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(3.dp))
-                Text("Record", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("Quay", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Button(
+                onClick = { showImportDialog = true },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = HyperViolet.copy(alpha = 0.25f),
+                    contentColor = MintGreen
+                ),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .border(1.dp, MintGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                    .testTag("editor_import_button")
+            ) {
+                Icon(Icons.Default.UploadFile, contentDescription = "Nhập tệp", tint = MintGreen, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("Nhập", fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
 
             Button(
                 onClick = {
-                    viewModel.addClipToTrack(TrackType.TEXT, "New Artistic Text", 3.5f, "✨ NEW TEXT")
+                    viewModel.addClipToTrack(TrackType.TEXT, "Chữ nghệ thuật mới", 3.5f, "✨ PHỤ ĐỀ MỚI")
                 },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = StudioSurfaceVariant,
@@ -447,9 +504,9 @@ fun MultiTrackEditorScreen(
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.Default.TextFields, contentDescription = "Text", modifier = Modifier.size(14.dp))
+                Icon(Icons.Default.TextFields, contentDescription = "Chữ", modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(3.dp))
-                Text("Text", fontSize = 10.sp)
+                Text("Chữ", fontSize = 10.sp)
             }
 
             if (selectedClipId != null) {
@@ -682,11 +739,21 @@ fun MultiTrackEditorScreen(
     // Export Dialog modal
     if (showExportDialog) {
         ExportDialog(
-            projectTitle = project?.title ?: "OmniCut AI Video",
+            projectTitle = project?.title ?: "Hendy Vietsub Video",
+            viewModel = viewModel,
             onDismiss = { showExportDialog = false },
             onExportComplete = {
                 showExportDialog = false
             }
+        )
+    }
+
+    // Media Import Dialog modal
+    if (showImportDialog) {
+        MediaImportDialog(
+            viewModel = viewModel,
+            asNewProject = false,
+            onDismiss = { showImportDialog = false }
         )
     }
 }

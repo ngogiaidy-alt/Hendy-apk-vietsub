@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.HighQuality
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
@@ -49,6 +51,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.model.Project
+import com.example.ui.components.MediaImportDialog
 import com.example.ui.components.StudioHeader
 import com.example.ui.theme.AmberGlow
 import com.example.ui.theme.HyperViolet
@@ -89,6 +95,8 @@ fun HomeScreen(
     val projects by viewModel.projects.collectAsState()
     val isCloudSynced by viewModel.isCloudSynced.collectAsState()
     val cloudSyncText by viewModel.cloudSyncText.collectAsState()
+    val fileStatus by viewModel.fileOperationStatus.collectAsState()
+    var showImportDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -104,6 +112,42 @@ fun HomeScreen(
                 isCloudSynced = isCloudSynced,
                 onSyncClick = { viewModel.triggerCloudSync() }
             )
+        }
+
+        // File Operation Feedback Banner
+        if (fileStatus != null) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = HyperViolet.copy(alpha = 0.25f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = fileStatus ?: "",
+                            color = NeonCyan,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { viewModel.clearFileStatus() },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Đóng", tint = StudioWhite, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
         }
 
         // Signature CapCut "+ Dự án mới" Hero Card
@@ -210,11 +254,11 @@ fun HomeScreen(
                         testTag = "tool_captions"
                     )
                     CapCutToolIcon(
-                        icon = Icons.Default.Layers,
-                        label = "Xóa nền",
+                        icon = Icons.Default.UploadFile,
+                        label = "Nhập tệp",
                         tint = MintGreen,
-                        onClick = { viewModel.navigateTo(StudioScreen.AI_SUITE) },
-                        testTag = "tool_bg_remove"
+                        onClick = { showImportDialog = true },
+                        testTag = "tool_import"
                     )
                 }
 
@@ -225,11 +269,11 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     CapCutToolIcon(
-                        icon = Icons.Default.CenterFocusStrong,
-                        label = "Định khung lại",
-                        tint = ElectricBlueColor,
+                        icon = Icons.Default.Layers,
+                        label = "Xóa nền",
+                        tint = MintGreen,
                         onClick = { viewModel.navigateTo(StudioScreen.AI_SUITE) },
-                        testTag = "tool_reframe"
+                        testTag = "tool_bg_remove"
                     )
                     CapCutToolIcon(
                         icon = Icons.Default.HighQuality,
@@ -371,6 +415,14 @@ fun HomeScreen(
                 )
             }
         }
+    }
+
+    if (showImportDialog) {
+        MediaImportDialog(
+            viewModel = viewModel,
+            asNewProject = true,
+            onDismiss = { showImportDialog = false }
+        )
     }
 }
 

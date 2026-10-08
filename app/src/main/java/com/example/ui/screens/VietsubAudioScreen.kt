@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,8 +31,11 @@ import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -48,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,6 +66,7 @@ import com.example.model.VoiceProfile
 import com.example.ui.components.ParameterSlider
 import com.example.ui.components.StatusFeedbackBanner
 import com.example.ui.components.StudioHeader
+import com.example.util.FileImportExportHelper
 import com.example.ui.theme.HyperViolet
 import com.example.ui.theme.MintGreen
 import com.example.ui.theme.NeonCyan
@@ -76,7 +85,37 @@ fun VietsubAudioScreen(
     viewModel: StudioViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
+    var importedVideoName by remember { mutableStateOf<String?>(null) }
+
+    val videoImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.importMediaFiles(context, listOf(it), asNewProject = false)
+            val meta = FileImportExportHelper.queryUriMetadata(context, it)
+            importedVideoName = meta.name
+        }
+    }
+
+    val audioImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.importAudioFile(context, it)
+        }
+    }
+
+    val saveSubtitleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri: Uri? ->
+        uri?.let {
+            val srt = viewModel.exportSubtitles("SRT")
+            viewModel.saveExportedFileToUri(context, it, srt, isMedia = false)
+        }
+    }
+
     val tabs = listOf(
         "Dịch Vietsub & LipSync",
         "Phụ đề tự động",
@@ -227,6 +266,53 @@ fun VietsubAudioScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
+                        // Video source selection / file import
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = StudioSurfaceVariant,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, StudioCardBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Video cần dịch & khớp khẩu hình:", color = StudioTextMuted, fontSize = 11.sp)
+                                    Text(
+                                        text = importedVideoName ?: "Video mẫu trong studio (Drift Neon 4K)",
+                                        color = if (importedVideoName != null) MintGreen else StudioWhite,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                }
+                                Button(
+                                    onClick = {
+                                        videoImportLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                        )
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = HyperViolet,
+                                        contentColor = StudioWhite
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.testTag("btn_import_video_for_vietsub")
+                                ) {
+                                    Icon(Icons.Default.UploadFile, contentDescription = "Nhập video", modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Nhập tệp", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
                         StatusFeedbackBanner(statusText = videoUtilStatus)
 
                         Button(
@@ -314,6 +400,55 @@ fun VietsubAudioScreen(
                             Icon(Icons.Default.ClosedCaption, contentDescription = "Phụ đề", tint = StudioBackground, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Tạo Phụ Đề Tự Động Vào Dòng Thời Gian", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Subtitle file export / share
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    saveSubtitleLauncher.launch("hendy_vietsub.srt")
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = StudioSurfaceVariant,
+                                    contentColor = NeonCyan
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                                    .testTag("btn_export_srt_from_tab")
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = "Lưu SRT", modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Lưu tệp .SRT", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+
+                            Button(
+                                onClick = {
+                                    val srt = viewModel.exportSubtitles("SRT")
+                                    FileImportExportHelper.shareText(context, srt, "Phụ đề Hendy Vietsub")
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = HyperViolet.copy(alpha = 0.35f),
+                                    contentColor = StudioWhite
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .border(1.dp, HyperViolet, RoundedCornerShape(10.dp))
+                                    .testTag("btn_share_srt_from_tab")
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = "Chia sẻ", modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Chia sẻ phụ đề", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
                         }
                     }
                 }
@@ -533,19 +668,80 @@ fun VietsubAudioScreen(
             4 -> {
                 // Kho nhạc & SFX
                 item {
-                    Text(
-                        text = "Kho Nhạc Thịnh Hành & Hiệu Ứng Âm Thanh",
-                        color = StudioWhite,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp)
-                    )
-                    Text(
-                        text = "Nhạc viral TikTok và hiệu ứng chuyển cảnh, vỗ tay, tiếng cười miễn phí bản quyền.",
-                        color = StudioTextMuted,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 16.dp, bottom = 12.dp)
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Kho Nhạc Thịnh Hành & Hiệu Ứng Âm Thanh",
+                            color = StudioWhite,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Nhạc viral TikTok, beat Lo-fi và hiệu ứng chuyển cảnh miễn phí bản quyền.",
+                            color = StudioTextMuted,
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Import Local Audio File Button
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = StudioSurfaceVariant,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    audioImportLauncher.launch(
+                                        arrayOf("audio/*", "audio/mpeg", "audio/wav", "audio/mp4", "audio/aac")
+                                    )
+                                }
+                                .testTag("btn_import_local_audio")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MintGreen.copy(alpha = 0.2f),
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.UploadFile,
+                                            contentDescription = "Nhập âm thanh",
+                                            tint = MintGreen,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Nhập tệp âm thanh từ thiết bị (MP3 / WAV / M4A)",
+                                        color = StudioWhite,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Thêm nhạc nền hoặc bản ghi âm cá nhân vào luồng âm thanh",
+                                        color = StudioTextMuted,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
 
                 items(audioLibrary, key = { it.id }) { audio ->
