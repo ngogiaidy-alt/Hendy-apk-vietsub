@@ -1,0 +1,6 @@
+{
+  "name": "Hendy Vietsub",
+  "description": "Ứng dụng sáng tạo video và chỉnh sửa đa phương tiện phong cách CapCut với Kling 3.0, VEO 3.1, Sora 2, dịch phụ đề Vietsub, lồng tiếng khớp khẩu hình, tách âm thanh và xuất 4K 60fps không hình mờ.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
